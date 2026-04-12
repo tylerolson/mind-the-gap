@@ -1,0 +1,5 @@
+# Go (gtfs-ingestor)
+gtfs-ingestor/bin/
+gtfs-ingestor/*.out
+gtfs-ingestor/*.test
+gtfs-ingestor/.coverprofile
