@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func ParseTripRouteMap(zipReader *zip.Reader) (map[string]string, error) {
+func ParseTripInfoMap(zipReader *zip.Reader) (map[string]TripInfo, error) {
 	tripsFile, err := findTripsFile(zipReader.File)
 	if err != nil {
 		return nil, err
@@ -26,12 +26,12 @@ func ParseTripRouteMap(zipReader *zip.Reader) (map[string]string, error) {
 		return nil, fmt.Errorf("read trips.txt headers: %w", err)
 	}
 
-	tripIDIdx, routeIDIdx, err := findTripsColumnIndexes(headers)
+	tripIDIdx, routeIDIdx, shapeIDIdx, err := findTripsColumnIndexes(headers)
 	if err != nil {
 		return nil, err
 	}
 
-	tripRouteMap := make(map[string]string)
+	tripInfoMap := make(map[string]TripInfo)
 	for {
 		record, err := csvReader.Read()
 		if err == io.EOF {
@@ -51,11 +51,34 @@ func ParseTripRouteMap(zipReader *zip.Reader) (map[string]string, error) {
 			continue
 		}
 
-		tripRouteMap[tripID] = routeID
+		shapeID := ""
+		if shapeIDIdx >= 0 && shapeIDIdx < len(record) {
+			shapeID = strings.TrimSpace(record[shapeIDIdx])
+		}
+
+		tripInfoMap[tripID] = TripInfo{
+			TripID:  tripID,
+			RouteID: routeID,
+			ShapeID: shapeID,
+		}
 	}
 
-	if len(tripRouteMap) == 0 {
-		return nil, fmt.Errorf("no trip-route mappings found in trips.txt")
+	if len(tripInfoMap) == 0 {
+		return nil, fmt.Errorf("no trip metadata found in trips.txt")
+	}
+
+	return tripInfoMap, nil
+}
+
+func ParseTripRouteMap(zipReader *zip.Reader) (map[string]string, error) {
+	tripInfoMap, err := ParseTripInfoMap(zipReader)
+	if err != nil {
+		return nil, err
+	}
+
+	tripRouteMap := make(map[string]string)
+	for tripID, info := range tripInfoMap {
+		tripRouteMap[tripID] = info.RouteID
 	}
 
 	return tripRouteMap, nil
@@ -71,9 +94,10 @@ func findTripsFile(files []*zip.File) (*zip.File, error) {
 	return nil, fmt.Errorf("trips.txt not found in static GTFS zip")
 }
 
-func findTripsColumnIndexes(headers []string) (int, int, error) {
+func findTripsColumnIndexes(headers []string) (int, int, int, error) {
 	tripIDIdx := -1
 	routeIDIdx := -1
+	shapeIDIdx := -1
 
 	for i, header := range headers {
 		switch strings.TrimSpace(header) {
@@ -81,12 +105,14 @@ func findTripsColumnIndexes(headers []string) (int, int, error) {
 			tripIDIdx = i
 		case "route_id":
 			routeIDIdx = i
+		case "shape_id":
+			shapeIDIdx = i
 		}
 	}
 
 	if tripIDIdx == -1 || routeIDIdx == -1 {
-		return -1, -1, fmt.Errorf("required columns trip_id/route_id missing in trips.txt")
+		return -1, -1, -1, fmt.Errorf("required columns trip_id/route_id missing in trips.txt")
 	}
 
-	return tripIDIdx, routeIDIdx, nil
+	return tripIDIdx, routeIDIdx, shapeIDIdx, nil
 }

@@ -11,34 +11,40 @@ import (
 	"strings"
 )
 
-// LoadStaticIndexes fetches the GTFS zip from the given URL, parses the trips.txt and routes.txt files, and returns the trip-to-route mapping and route metadata.
+// LoadStaticIndexes fetches the GTFS zip from the given URL, parses trips.txt, routes.txt, and shapes.txt,
+// and returns trip metadata, route metadata, and shape geometry.
 // It returns an error if any step of the process fails, including fetching the zip, parsing the files, or if required data is missing.
-func LoadStaticIndexes(ctx context.Context, client *http.Client, zipURL string) (map[string]string, map[string]RouteInfo, error) {
+func LoadStaticIndexes(ctx context.Context, client *http.Client, zipURL string) (map[string]TripInfo, map[string]RouteInfo, map[string][]ShapePoint, error) {
 	zipBytes, err := FetchStaticGTFSZip(ctx, client, zipURL)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if len(zipBytes) == 0 {
-		return nil, nil, fmt.Errorf("empty static GTFS zip payload")
+		return nil, nil, nil, fmt.Errorf("empty static GTFS zip payload")
 	}
 
 	zipReader, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
 	if err != nil {
-		return nil, nil, fmt.Errorf("open static GTFS zip: %w", err)
+		return nil, nil, nil, fmt.Errorf("open static GTFS zip: %w", err)
 	}
 
-	tripRouteMap, err := ParseTripRouteMap(zipReader)
+	tripInfoMap, err := ParseTripInfoMap(zipReader)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse trips.txt: %w", err)
+		return nil, nil, nil, fmt.Errorf("parse trips.txt: %w", err)
 	}
 
 	routeInfoMap, err := ParseRouteInfoMap(zipReader)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse routes.txt: %w", err)
+		return nil, nil, nil, fmt.Errorf("parse routes.txt: %w", err)
 	}
 
-	return tripRouteMap, routeInfoMap, nil
+	shapesMap, err := ParseShapesMap(zipReader)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("parse shapes.txt: %w", err)
+	}
+
+	return tripInfoMap, routeInfoMap, shapesMap, nil
 }
 
 func ParseRouteInfoMap(zipReader *zip.Reader) (map[string]RouteInfo, error) {
